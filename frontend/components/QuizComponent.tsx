@@ -16,11 +16,17 @@ export default function QuizComponent({ sessionId }: QuizComponentProps) {
     const [topic, setTopic] = useState('');
     const [difficulty, setDifficulty] = useState('Medium');
     const [quiz, setQuiz] = useState<any>(null);
-    const [answers, setAnswers] = useState<Record<string, string>>({});
     const [result, setResult] = useState<any>(null);
     const [loading, setLoading] = useState(false);
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const [error, setError] = useState<string | null>(null);
+
+    // New State for immediate feedback
+    const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
+    const [isAnswered, setIsAnswered] = useState(false);
+    const [isCorrect, setIsCorrect] = useState(false);
+    const [scoreCount, setScoreCount] = useState(0); // Track score locally
+    const [answersMap, setAnswersMap] = useState<Record<string, string>>({}); // For final submission
 
     const handleGenerate = async () => {
         if (!topic.trim()) return;
@@ -29,9 +35,13 @@ export default function QuizComponent({ sessionId }: QuizComponentProps) {
         try {
             const data = await generateQuiz(topic, difficulty, 5, sessionId);
             setQuiz(data);
-            setAnswers({});
+            // Reset states
             setResult(null);
             setCurrentQuestionIndex(0);
+            setScoreCount(0);
+            setAnswersMap({});
+            resetQuestionState();
+
             setState('idle');
         } catch (error) {
             console.error('Failed to generate quiz:', error);
@@ -42,44 +52,93 @@ export default function QuizComponent({ sessionId }: QuizComponentProps) {
         }
     };
 
+    const resetQuestionState = () => {
+        setSelectedAnswer(null);
+        setIsAnswered(false);
+        setIsCorrect(false);
+    };
+
+    const normalizeAnswer = (text: string) => {
+        // Simple normalization to handle "A. Answer" vs "Answer" or case differences
+        // We assume the backend might send "A" or the full text. 
+        // Based on backend logic, it compares first char often. 
+        // Let's rely on the text matching if possible, or basic cleaning.
+        if (!text) return "";
+        return text.trim().toLowerCase();
+    };
+
+    // Helper to check if an option matches the correct answer
+    // The backend logic is robust (extracts A/B/C), but frontend needs to match what user sees
+    // If backend sends `correct_answer: "A"`, and option is "A. Paris", we need to be careful.
+    // However, usually `correct_answer` in the payload is the FULL string or the Letter. 
+    // Let's assume the question object has `correct_answer` that matches one of the options text 
+    // OR contains the letter prefix.
+    const checkAnswer = (option: string, correct: string) => {
+        // 1. Exact match
+        if (option === correct) return true;
+
+        // 2. Letter match (e.g. Correct="A", Option="A. Paris")
+        // or Correct="A. Paris", Option="A" (rare)
+        const optionChar = option.trim().charAt(0).toUpperCase();
+        const correctChar = correct.trim().charAt(0).toUpperCase();
+
+        // If both start with a letter followed by dot/paren, compare letters
+        const isOptionLabeled = /^[A-D][\.\)]/.test(option);
+        const isCorrectLabeled = /^[A-D][\.\)]/.test(correct);
+
+        if (isOptionLabeled || correct.length === 1) {
+            return optionChar === correctChar;
+        }
+
+        return normalizeAnswer(option) === normalizeAnswer(correct);
+    };
+
     const handleOptionSelect = (option: string) => {
-        if (!quiz) return;
+        if (isAnswered) return; // Prevent changing after answer
+
+        setSelectedAnswer(option);
+        setIsAnswered(true);
+
         const currentQ = quiz.questions[currentQuestionIndex];
-        // Use question ID as key, ensure it's a string for consistency
-        setAnswers(prev => ({ ...prev, [String(currentQ.id)]: option }));
+        const correct = currentQ.correct_answer;
+
+        const correctBool = checkAnswer(option, correct);
+        setIsCorrect(correctBool);
+
+        // Update Companion
+        if (correctBool) {
+            setState('happy');
+            setScoreCount(prev => prev + 1);
+        } else {
+            setState('sad');
+        }
+
+        // Save for final submission
+        setAnswersMap(prev => ({ ...prev, [String(currentQ.id)]: option }));
     };
 
     const handleNext = () => {
         if (currentQuestionIndex < (quiz?.questions.length || 0) - 1) {
             setCurrentQuestionIndex(prev => prev + 1);
+            resetQuestionState();
+            setState('idle');
+        } else {
+            // End of quiz
+            handleFinalSubmit();
         }
     };
 
-    const handlePrev = () => {
-        if (currentQuestionIndex > 0) {
-            setCurrentQuestionIndex(prev => prev - 1);
-        }
-    };
-
-    const handleSubmit = async () => {
-        if (!quiz) return;
+    const handleFinalSubmit = async () => {
         setLoading(true);
-        setError(null);
         setState('thinking');
         try {
-            const data = await submitQuiz(quiz.quiz_id, answers, sessionId);
+            // We already validated locally, but we need to save progress to DB
+            const data = await submitQuiz(quiz.quiz_id, answersMap, sessionId);
             setResult(data);
-            if (data.score >= 60) {
-                setState('happy');
-            } else {
-                setState('sad');
-            }
-            setTimeout(() => setState('idle'), 5000);
+            setState('happy'); // Celebrate completion
         } catch (error) {
-            console.error('Failed to submit quiz:', error);
-            setError('Failed to submit quiz. Please try again.');
-            setState('sad');
-            setTimeout(() => setState('idle'), 3000);
+            console.error('Failed to save quiz:', error);
+            setError('Quiz completed, but failed to save progress.');
         } finally {
             setLoading(false);
         }
@@ -95,10 +154,10 @@ export default function QuizComponent({ sessionId }: QuizComponentProps) {
                         <Loader2 className="w-20 h-20 animate-spin text-violet-800 relative z-10" />
                     </div>
                     <h3 className="mt-8 text-2xl font-bold text-white tracking-tight">
-                        {quiz ? 'Analyzing Performance...' : 'Crafting Your Quiz...'}
+                        {quiz ? 'Analyzing Results...' : 'Crafting Your Quiz...'}
                     </h3>
                     <p className="mt-3 text-indigo-200 font-medium animate-pulse">
-                        {quiz ? 'Calculating score and insights' : 'AI is generating unique questions'}
+                        {quiz ? 'Saving your progress' : 'AI is generating unique questions'}
                     </p>
                 </div>
             </div>
@@ -118,7 +177,7 @@ export default function QuizComponent({ sessionId }: QuizComponentProps) {
                     <Trophy className="w-16 h-16 text-yellow-400 drop-shadow-lg" />
                 </div>
 
-                <h2 className="text-4xl font-bold mb-4 text-white">Quiz Completed!</h2>
+                <h2 className="text-4xl font-bold mb-4 text-white">Quiz Mastered!</h2>
                 <div className="text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-orange-400 to-red-400 mb-8 tracking-tighter">
                     {Math.round(result.score)}%
                 </div>
@@ -129,74 +188,12 @@ export default function QuizComponent({ sessionId }: QuizComponentProps) {
                             'Keep learning! Every mistake is a lesson. 💪'}
                 </p>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-                    <div className="p-6 rounded-2xl bg-green-500/10 border border-green-500/20 backdrop-blur-sm">
-                        <div className="flex items-center justify-center gap-3 mb-2">
-                            <CheckCircle className="w-5 h-5 text-green-400" />
-                            <p className="text-sm text-green-300 font-medium uppercase tracking-wider">Correct</p>
-                        </div>
-                        <p className="text-3xl font-bold text-white">{result.correct}</p>
-                    </div>
-                    <div className="p-6 rounded-2xl bg-red-500/10 border border-red-500/20 backdrop-blur-sm">
-                        <div className="flex items-center justify-center gap-3 mb-2">
-                            <XCircle className="w-5 h-5 text-red-400" />
-                            <p className="text-sm text-red-300 font-medium uppercase tracking-wider">Incorrect</p>
-                        </div>
-                        <p className="text-3xl font-bold text-white">{result.total - result.correct}</p>
-                    </div>
-                    <div className="p-6 rounded-2xl bg-blue-500/10 border border-blue-500/20 backdrop-blur-sm">
-                        <div className="flex items-center justify-center gap-3 mb-2">
-                            <Target className="w-5 h-5 text-blue-400" />
-                            <p className="text-sm text-blue-300 font-medium uppercase tracking-wider">Total</p>
-                        </div>
-                        <p className="text-3xl font-bold text-white">{result.total}</p>
-                    </div>
-                </div>
-
-                {/* Detailed Review */}
-                <div className="text-left mb-10 space-y-4">
-                    <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-                        <BookOpen className="w-5 h-5 text-indigo-400" /> Answer Review
-                    </h3>
-                    <div className="space-y-4 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
-                        {result.results.map((r: any, idx: number) => (
-                            <div key={idx} className={`p-5 rounded-2xl border ${r.is_correct ? 'bg-green-500/5 border-green-500/20' : 'bg-red-500/5 border-red-500/20'}`}>
-                                <div className="flex gap-3">
-                                    <div className={`mt-1 flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center ${r.is_correct ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-                                        {r.is_correct ? <CheckCircle size={14} /> : <XCircle size={14} />}
-                                    </div>
-                                    <div className="flex-1">
-                                        <p className="text-white font-medium mb-2">{r.question}</p>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                                            <div className="bg-black/20 rounded-lg p-3 border border-white/5">
-                                                <span className="text-gray-400 block text-xs mb-1 uppercase tracking-wider">Your Answer</span>
-                                                <span className={r.is_correct ? 'text-green-300' : 'text-red-300'}>{r.user_answer || '(No answer)'}</span>
-                                            </div>
-                                            {!r.is_correct && (
-                                                <div className="bg-green-500/10 rounded-lg p-3 border border-green-500/10">
-                                                    <span className="text-green-400/60 block text-xs mb-1 uppercase tracking-wider">Correct Answer</span>
-                                                    <span className="text-green-300">{r.correct_answer}</span>
-                                                </div>
-                                            )}
-                                        </div>
-                                        {r.explanation && (
-                                            <div className="mt-3 text-xs text-indigo-200/70 border-t border-white/5 pt-2">
-                                                <span className="font-semibold text-indigo-400">Explanation:</span> {r.explanation}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
                 <div className="flex justify-center gap-4">
                     <button
                         onClick={() => { setQuiz(null); setResult(null); setTopic(''); }}
                         className="px-10 py-4 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-2xl font-bold text-lg transition-all shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 hover:scale-105 active:scale-95"
                     >
-                        Take Another Quiz
+                        New Challenge
                     </button>
                 </div>
             </motion.div>
@@ -205,9 +202,11 @@ export default function QuizComponent({ sessionId }: QuizComponentProps) {
 
     if (quiz) {
         const question = quiz.questions[currentQuestionIndex];
-        const progress = ((currentQuestionIndex + 1) / quiz.questions.length) * 100;
-        const currentAnswer = answers[String(question.id)];
+        const progress = ((currentQuestionIndex) / quiz.questions.length) * 100;
+        const totalQ = quiz.questions.length;
 
+        // Ensure we handle cases where `correct_answer` might not match exactly 
+        // by highlighting the one that matched our logic or failing that, the raw string
         return (
             <div className="max-w-4xl mx-auto">
                 {/* Header & Progress */}
@@ -218,7 +217,7 @@ export default function QuizComponent({ sessionId }: QuizComponentProps) {
                         </div>
                         <div>
                             <h3 className="text-sm text-indigo-300 font-medium uppercase tracking-wider">Question</h3>
-                            <p className="text-xs text-indigo-400/60">of {quiz.questions.length}</p>
+                            <p className="text-xs text-indigo-400/60">of {totalQ}</p>
                         </div>
                     </div>
                     <div className="flex-1 max-w-xs ml-8">
@@ -236,74 +235,98 @@ export default function QuizComponent({ sessionId }: QuizComponentProps) {
                 <AnimatePresence mode="wait">
                     <motion.div
                         key={currentQuestionIndex}
-                        initial={{ opacity: 0, x: 50, rotateY: -10 }}
-                        animate={{ opacity: 1, x: 0, rotateY: 0 }}
-                        exit={{ opacity: 0, x: -50, rotateY: 10 }}
-                        transition={{ duration: 0.4 }}
+                        initial={{ opacity: 0, x: 50 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -50 }}
+                        transition={{ duration: 0.3 }}
                         className="glass rounded-[32px] p-8 md:p-12 mb-8 min-h-[400px] flex flex-col justify-center relative overflow-hidden"
                     >
-                        <div className="absolute top-0 right-0 p-8 opacity-10">
-                            <BookOpen className="w-32 h-32 text-white" />
-                        </div>
-
                         <h3 className="text-2xl md:text-3xl font-bold mb-10 leading-relaxed text-white relative z-10">
                             {question.question}
                         </h3>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative z-10">
-                            {question.options.map((option: string, idx: number) => (
-                                <button
-                                    key={idx}
-                                    onClick={() => handleOptionSelect(option)}
-                                    className={`p-6 text-left rounded-2xl border transition-all duration-300 flex items-center justify-between group hover:scale-[1.02] active:scale-[0.98] ${currentAnswer === option
-                                        ? 'bg-indigo-500/20 border-indigo-500 text-white shadow-[0_0_30px_rgba(99,102,241,0.2)]'
-                                        : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-indigo-500/30 text-indigo-100'
-                                        }`}
-                                >
-                                    <span className="font-medium text-lg">{option}</span>
-                                    {currentAnswer === option && (
-                                        <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center shadow-lg">
-                                            <CheckCircle className="w-5 h-5 text-white" />
-                                        </div>
-                                    )}
-                                </button>
-                            ))}
+                            {question.options.map((option: string, idx: number) => {
+                                // Determine styling based on state
+                                let styleClass = "bg-white/5 border-white/10 hover:bg-white/10 hover:border-indigo-500/30 text-indigo-100";
+                                let icon = null;
+
+                                if (isAnswered) {
+                                    const isSelected = selectedAnswer === option;
+                                    const isThisCorrect = checkAnswer(option, question.correct_answer);
+
+                                    if (isSelected && isThisCorrect) {
+                                        // Correct Selection
+                                        styleClass = "bg-green-500/20 border-green-500 text-white shadow-[0_0_30px_rgba(74,222,128,0.2)]";
+                                        icon = <CheckCircle className="w-6 h-6 text-green-400" />;
+                                    } else if (isSelected && !isThisCorrect) {
+                                        // Wrong Selection
+                                        styleClass = "bg-red-500/20 border-red-500 text-white shadow-[0_0_30px_rgba(239,68,68,0.2)]";
+                                        icon = <XCircle className="w-6 h-6 text-red-500" />;
+                                    } else if (!isSelected && isThisCorrect) {
+                                        // Show Correct Answer if user missed it
+                                        styleClass = "bg-green-500/10 border-green-500/50 text-green-100";
+                                        icon = <CheckCircle className="w-5 h-5 text-green-400 opacity-50" />;
+                                    } else {
+                                        // Unselected, incorrect options - dim them
+                                        styleClass = "opacity-50 bg-black/20 border-transparent";
+                                    }
+                                }
+
+                                return (
+                                    <button
+                                        key={idx}
+                                        onClick={() => handleOptionSelect(option)}
+                                        disabled={isAnswered}
+                                        className={`p-6 text-left rounded-2xl border transition-all duration-300 flex items-center justify-between group ${!isAnswered && 'hover:scale-[1.02] active:scale-[0.98]'} ${styleClass}`}
+                                    >
+                                        <span className="font-medium text-lg pr-4">{option}</span>
+                                        {icon}
+                                    </button>
+                                );
+                            })}
                         </div>
+
+                        {/* Explanation or Feedback Message */}
+                        {isAnswered && (
+                            <motion.div
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className={`mt-8 p-4 rounded-xl border ${isCorrect ? 'bg-green-500/10 border-green-500/20' : 'bg-red-500/10 border-red-500/20'}`}
+                            >
+                                <div className="flex items-center gap-3 mb-2">
+                                    {isCorrect ? <CheckCircle className="text-green-400" /> : <XCircle className="text-red-400" />}
+                                    <span className={`font-bold ${isCorrect ? 'text-green-400' : 'text-red-400'}`}>
+                                        {isCorrect ? "Correct!" : "Incorrect"}
+                                    </span>
+                                </div>
+                                {question.explanation && (
+                                    <p className="text-indigo-200 text-sm leading-relaxed">
+                                        <span className="font-semibold text-indigo-400">Why? </span>
+                                        {question.explanation}
+                                    </p>
+                                )}
+                            </motion.div>
+                        )}
+
                     </motion.div>
                 </AnimatePresence>
 
-                {
-                    error && (
-                        <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center gap-3 text-red-200">
-                            <AlertCircle className="w-5 h-5 flex-shrink-0" />
-                            <p>{error}</p>
-                        </div>
-                    )
-                }
+                {error && (
+                    <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center gap-3 text-red-200">
+                        <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                        <p>{error}</p>
+                    </div>
+                )}
 
-                <div className="flex justify-between items-center px-4">
-                    <button
-                        onClick={handlePrev}
-                        disabled={currentQuestionIndex === 0}
-                        className="px-6 py-3 text-indigo-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors font-medium flex items-center gap-2"
-                    >
-                        <ArrowRight className="w-5 h-5 rotate-180" /> Previous
-                    </button>
-
-                    {currentQuestionIndex === quiz.questions.length - 1 ? (
-                        <button
-                            onClick={handleSubmit}
-                            disabled={Object.keys(answers).length !== quiz.questions.length}
-                            className="px-10 py-4 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white rounded-2xl font-bold text-lg transition-all shadow-lg shadow-emerald-500/25 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95"
-                        >
-                            Submit Quiz
-                        </button>
-                    ) : (
+                <div className="flex justify-end items-center px-4 h-20">
+                    {isAnswered && (
                         <button
                             onClick={handleNext}
                             className="px-10 py-4 bg-white text-indigo-900 hover:bg-indigo-50 rounded-2xl font-bold text-lg transition-all shadow-lg shadow-white/10 flex items-center gap-2 hover:scale-105 active:scale-95"
                         >
-                            Next Question <ArrowRight className="w-5 h-5" />
+                            {currentQuestionIndex === totalQ - 1 ? 'Finish Quiz' : 'Next Question'}
+                            <ArrowRight className="w-5 h-5" />
                         </button>
                     )}
                 </div>

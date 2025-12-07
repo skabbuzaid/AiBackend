@@ -4,9 +4,10 @@ import React, { useState } from 'react';
 import { generateFlashcards } from '@/lib/api';
 import {
     Loader2, RotateCw, ChevronLeft, ChevronRight,
-    Layers, Brain, Lightbulb
+    Layers, Brain, Lightbulb, CheckCircle
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { useCompanion } from '@/context/CompanionContext';
 
 interface FlashcardComponentProps {
     sessionId: string;
@@ -26,16 +27,19 @@ function getReadableText(bg: string) {
 }
 
 export default function FlashcardComponent({ sessionId }: FlashcardComponentProps) {
+    const { setState } = useCompanion();
     const [topic, setTopic] = useState('');
     const [numCards, setNumCards] = useState(5);
     const [flashcards, setFlashcards] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     const [currentIndex, setCurrentIndex] = useState(0);
     const [isFlipped, setIsFlipped] = useState(false);
+    const [isFinished, setIsFinished] = useState(false);
 
     const handleGenerate = async () => {
         if (!topic.trim()) return;
         setLoading(true);
+        setState('thinking');
 
         try {
             const data = await generateFlashcards(topic, numCards, sessionId);
@@ -52,24 +56,42 @@ export default function FlashcardComponent({ sessionId }: FlashcardComponentProp
             setFlashcards(styled);
             setCurrentIndex(0);
             setIsFlipped(false);
+            setIsFinished(false);
+            setState('happy');
+            setTimeout(() => setState('idle'), 2000);
         } catch (error) {
             console.error('Flashcard error:', error);
+            setState('sad');
             setFlashcards([]);
         } finally {
             setLoading(false);
         }
     };
 
+    const handleFlip = () => {
+        setIsFlipped(!isFlipped);
+        if (!isFlipped) {
+            setState('thinking'); // Thinking about the answer
+        } else {
+            setState('idle');
+        }
+    };
+
     const handleNext = () => {
         if (currentIndex < flashcards.length - 1) {
             setIsFlipped(false);
+            setState('idle');
             setTimeout(() => setCurrentIndex(prev => prev + 1), 200);
+        } else {
+            setIsFinished(true);
+            setState('happy');
         }
     };
 
     const handlePrev = () => {
         if (currentIndex > 0) {
             setIsFlipped(false);
+            setState('idle');
             setTimeout(() => setCurrentIndex(prev => prev - 1), 200);
         }
     };
@@ -81,6 +103,25 @@ export default function FlashcardComponent({ sessionId }: FlashcardComponentProp
                 <Loader2 className="w-20 h-20 animate-spin text-primary" />
                 <h3 className="mt-6 text-2xl font-bold">Generating Flashcards...</h3>
                 <p className="text-muted-foreground mt-2">Please wait</p>
+            </div>
+        );
+    }
+
+    // Finished Screen
+    if (isFinished) {
+        return (
+            <div className="flex flex-col items-center justify-center h-[500px] glass-panel rounded-[32px] text-center p-10">
+                <div className="w-24 h-24 bg-green-500/20 rounded-full flex items-center justify-center mb-6">
+                    <CheckCircle className="w-12 h-12 text-green-500" />
+                </div>
+                <h3 className="text-3xl font-bold mb-4">Set Completed!</h3>
+                <p className="text-muted-foreground mb-8">You've reviewed all {flashcards.length} cards on {topic}.</p>
+                <button
+                    onClick={() => { setFlashcards([]); setIsFinished(false); setTopic(''); }}
+                    className="px-8 py-4 bg-primary text-white rounded-xl font-bold"
+                >
+                    Review Another Topic
+                </button>
             </div>
         );
     }
@@ -107,7 +148,7 @@ export default function FlashcardComponent({ sessionId }: FlashcardComponentProp
                         className="w-full max-w-3xl aspect-[1.6/1] relative preserve-3d cursor-pointer shadow-2xl"
                         animate={{ rotateY: isFlipped ? 180 : 0 }}
                         transition={{ duration: 0.6 }}
-                        onClick={() => setIsFlipped(!isFlipped)}
+                        onClick={handleFlip}
                         style={{ background: card.bg, color: card.textColor, borderRadius: 40 }}
                     >
                         {/* FRONT */}
@@ -137,22 +178,22 @@ export default function FlashcardComponent({ sessionId }: FlashcardComponentProp
 
                 {/* Bottom Controls */}
                 <div className="flex justify-center gap-8 mt-10 pb-10">
-                    {currentIndex > 0 && (
-                        <button onClick={handlePrev}>
-                            <ChevronLeft className="w-9 h-9" />
-                        </button>
-                    )}
+                    <button
+                        onClick={handlePrev}
+                        disabled={currentIndex === 0}
+                        className="disabled:opacity-30"
+                    >
+                        <ChevronLeft className="w-9 h-9" />
+                    </button>
 
-                    <button onClick={() => setIsFlipped(!isFlipped)} className="px-8 py-4 bg-primary text-white rounded-xl font-semibold">
+                    <button onClick={handleFlip} className="px-8 py-4 bg-primary text-white rounded-xl font-semibold">
                         <RotateCw className="w-5 h-5 inline mr-2" />
                         Flip
                     </button>
 
-                    {currentIndex < flashcards.length - 1 && (
-                        <button onClick={handleNext}>
-                            <ChevronRight className="w-9 h-9" />
-                        </button>
-                    )}
+                    <button onClick={handleNext}>
+                        <ChevronRight className="w-9 h-9" />
+                    </button>
                 </div>
 
                 <div className="text-center pb-6">

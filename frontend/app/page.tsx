@@ -76,21 +76,21 @@ const Hero = () => {
         const tl = gsap.timeline();
 
         tl.from(textRef.current, {
-            y: 100,
+            y: 50,
             opacity: 0,
-            duration: 1,
-            ease: "power4.out"
+            duration: 1.2,
+            ease: "power3.out"
         })
             .from(imageRef.current, {
-                x: 100,
+                scale: 0.9,
                 opacity: 0,
-                duration: 1,
-                ease: "power4.out"
-            }, "-=0.8");
+                duration: 1.5,
+                ease: "power3.out"
+            }, "-=1.0");
 
         // Parallax for Image
         gsap.to(imageRef.current, {
-            yPercent: 20,
+            yPercent: 15,
             ease: "none",
             scrollTrigger: {
                 trigger: containerRef.current,
@@ -104,69 +104,76 @@ const Hero = () => {
 
     return (
         <section ref={containerRef} className="relative min-h-screen flex items-center pt-32 pb-20 px-6 overflow-hidden perspective-1000">
-            {/* Background Gradient */}
-            <div className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-900/20 via-background to-background" />
+            {/* Background Gradient - Enhanced Cosmic Vibe */}
+            <div className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-indigo-900/40 via-[#0a0a0a] to-background" />
+
+            {/* Animated Stars/Space Dust */}
+            <div className="absolute inset-0 -z-5 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-soft-light"></div>
 
             <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
                 <div ref={textRef} className="relative z-10">
-                    <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 font-medium text-sm mb-8">
-                        <Sparkles className="w-4 h-4" />
-                        <span>AI-Powered Learning Revolution</span>
+                    <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 font-medium text-sm mb-8 backdrop-blur-md">
+                        <Sparkles className="w-4 h-4 text-amber-300" />
+                        <span className="tracking-wide uppercase text-xs font-bold">Next-Gen AI Learning</span>
                     </div>
 
-                    <h1 className="text-6xl lg:text-8xl font-black leading-[1.1] mb-8 tracking-tight text-foreground">
+                    <h1 className="text-6xl lg:text-8xl font-black leading-[1.05] mb-8 tracking-tighter text-white">
                         Master Any <br />
-                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400">
+                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-pink-400 to-amber-300 animate-pulse-glow">
                             Subject Faster
                         </span>
                     </h1>
 
-                    <p className="text-xl text-muted-foreground mb-10 leading-relaxed max-w-lg">
-                        Your personal AI tutor that adapts to your learning style.
-                        Generate quizzes, flashcards, and explanations instantly.
+                    <p className="text-xl text-slate-400 mb-10 leading-relaxed max-w-lg font-light">
+                        Your personal AI companion that adapts to your mind.
+                        Generate <span className="text-white font-medium">Quizzes</span>, <span className="text-white font-medium">Flashcards</span>, and insights instantly.
                     </p>
 
                     <div className="flex flex-col sm:flex-row gap-5">
                         <Link href="/dashboard" className="w-full sm:w-auto">
-                            <button className="w-full px-8 py-4 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-full font-bold text-lg hover:shadow-[0_0_40px_rgba(99,102,241,0.4)] transition-all flex items-center justify-center gap-3 group">
-                                Start Learning Free
-                                <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                            <button className="w-full px-8 py-4 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-full font-bold text-lg hover:shadow-[0_0_50px_rgba(99,102,241,0.5)] transition-all flex items-center justify-center gap-3 group relative overflow-hidden">
+                                <span className="relative z-10">Start Learning Free</span>
+                                <div className="absolute inset-0 bg-gradient-to-r from-violet-600 to-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                                <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform relative z-10" />
                             </button>
                         </Link>
-                        <button className="w-full sm:w-auto px-8 py-4 glass-button rounded-full font-bold text-lg text-foreground hover:bg-white/10 transition-all flex items-center justify-center gap-2">
-                            <PlayCircle className="w-5 h-5" />
+                        <button className="w-full sm:w-auto px-8 py-4 glass-button rounded-full font-bold text-lg text-white hover:bg-white/10 transition-all flex items-center justify-center gap-2 backdrop-blur-md border border-white/10">
+                            <PlayCircle className="w-5 h-5 text-indigo-400" />
                             Watch Demo
                         </button>
                     </div>
 
-                    <div className="mt-12 flex items-center gap-8 text-sm font-medium text-muted-foreground">
+                    <div className="mt-12 flex items-center gap-8 text-sm font-medium text-slate-500">
                         <div className="flex items-center gap-2">
                             <Users className="w-5 h-5 text-indigo-400" />
                             <span>10k+ Students</span>
                         </div>
                         <div className="flex items-center gap-2">
-                            <Star className="w-5 h-5 text-yellow-400 fill-yellow-400" />
+                            <Star className="w-5 h-5 text-amber-400 fill-amber-400" />
                             <span>4.9/5 Rating</span>
                         </div>
                     </div>
                 </div>
 
                 <div ref={imageRef} className="relative hidden lg:block">
-                    <div className="relative w-full aspect-square max-w-[600px] mx-auto">
-                        <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/20 to-purple-500/20 rounded-full blur-[100px] animate-pulse-slow" />
-                        <Image
-                            src="/hero-education-3d.png"
-                            alt="AI Education 3D"
-                            fill
-                            className="object-contain drop-shadow-2xl animate-float"
-                            priority
-                        />
+                    <div className="relative w-full aspect-square max-w-[650px] mx-auto perspective-1000">
+                        <div className="absolute inset-0 bg-gradient-to-tr from-indigo-600/30 to-pink-600/30 rounded-full blur-[120px] animate-pulse-slow" />
+                        {/* Placeholder for 3D Hero Element if user adds one later, currently using the image but styled better */}
+                        <div className="transform rotate-y-12 rotate-x-6 hover:rotate-y-0 hover:rotate-x-0 transition-transform duration-700 ease-out preserve-3d">
+                            <Image
+                                src="/hero-education-3d.png"
+                                alt="AI Education 3D"
+                                fill
+                                className="object-contain drop-shadow-[0_20px_50px_rgba(0,0,0,0.5)] animate-float"
+                                priority
+                            />
+                        </div>
                     </div>
                 </div>
             </div>
 
             <div className="absolute bottom-10 left-1/2 -translate-x-1/2 animate-bounce">
-                <ChevronDown className="w-8 h-8 text-muted-foreground" />
+                <ChevronDown className="w-8 h-8 text-white/20" />
             </div>
         </section>
     );
