@@ -97,22 +97,37 @@ async def submit_quiz(submission: QuizSubmission):
         
         for q in quiz_data["questions"]:
             q_id = q["id"]
-            user_answer = submission.answers.get(q_id, "")
-            is_correct = user_answer == q["correct_answer"]
+            # Clean and normalize answers for comparison
+            import re
+            
+            user_ans = submission.answers.get(str(q_id), "")
+
+            def extract_option_char(text):
+                if not text: return ""
+                match = re.match(r"^[\s\(]*([A-Da-d0-9])[\s\)\.]", text.strip())
+                if match:
+                    return match.group(1).upper()
+                clean = text.strip().upper()
+                return clean if len(clean) == 1 else clean[:1]
+
+            correct_char = extract_option_char(q.get("correct_answer", ""))
+            user_char = extract_option_char(user_ans)
+            
+            is_correct = (correct_char == user_char) and (correct_char != "")
             
             if is_correct:
                 correct += 1
             
             results.append({
-                "question_id": q_id,
+                "question_id": q["id"],
                 "question": q["question"],
-                "user_answer": user_answer,
-                "correct_answer": q["correct_answer"],
+                "user_answer": user_ans,
+                "correct_answer": q.get("correct_answer", ""),
                 "is_correct": is_correct,
                 "explanation": q.get("explanation", "")
             })
         
-        score = (correct / total) * 100 if total > 0 else 0
+        score = (correct / total * 100) if total > 0 else 0
         
         # Save to progress
         progress = db.get_user_progress(submission.session_id)
@@ -120,12 +135,13 @@ async def submit_quiz(submission: QuizSubmission):
             "quiz_id": submission.quiz_id,
             "topic": quiz_data.get("topic", "Unknown"),
             "score": score,
-            "date": datetime.now().isoformat()
+            "date": datetime.now().isoformat(),
+            "details": results
         })
         db.update_user_progress(submission.session_id, progress)
         
         return {
-            "score": score,
+            "score": round(score, 1),
             "correct": correct,
             "total": total,
             "results": results,
@@ -257,6 +273,19 @@ async def list_models():
             }
         ]
     }
+
+# -----------------------
+# Companion Endpoints
+# -----------------------
+from utils.companion_brain import companion_brain
+
+@app.post("/api/companion/state")
+async def get_companion_state(request: dict):
+    """Get companion state based on context"""
+    try:
+        return companion_brain.get_state(request)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn

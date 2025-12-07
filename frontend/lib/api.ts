@@ -60,7 +60,7 @@ export const generateQuiz = async (topic: string, difficulty: string, numQuestio
   return response.data;
 };
 
-export const submitQuiz = async (quizId: string, answers: Record<number, string>, sessionId: string) => {
+export const submitQuiz = async (quizId: string, answers: Record<string, string>, sessionId: string) => {
   const response = await api.post('/quiz/submit', {
     quiz_id: quizId,
     answers,

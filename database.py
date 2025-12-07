@@ -71,6 +71,7 @@ class QuizScore(Base):
     score = Column(Float)
     correct_count = Column(Integer)
     total_questions = Column(Integer)
+    details = Column(JSON) # Store detailed question results
     created_at = Column(DateTime, default=datetime.utcnow)
 
     quiz = relationship("Quiz", back_populates="scores")

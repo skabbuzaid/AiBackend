@@ -71,7 +71,7 @@ class QuizRequest(BaseModel):
 
 class QuizSubmission(BaseModel):
     quiz_id: str
-    answers: Dict[int, str]
+    answers: Dict[str, str]
     session_id: str
 
 class FlashcardRequest(BaseModel):
@@ -153,19 +153,21 @@ def generate_quiz(topic: str, difficulty: str, num_questions: int) -> Dict:
     llm = get_llm()
     prompt = f"""Create a {difficulty} difficulty quiz about "{topic}" with {num_questions} questions.
 
+Return ONLY valid JSON in this exact format. Ensure all questions and answers are factually correct. Double check math calculations (e.g., 180 - 110 = 70, not 80).
+CRITICAL: The "correct_answer" field MUST match the letter of the correct option exactly. If the correct option is "A) 1080", then "correct_answer" MUST be "A". Do not put the full text.
 Return ONLY valid JSON in this exact format:
-{{
+{
   "title": "Quiz Title",
   "questions": [
-    {{
+    {
       "id": 1,
       "question": "Question text?",
       "options": ["A) Option 1", "B) Option 2", "C) Option 3", "D) Option 4"],
       "correct_answer": "A",
       "explanation": "Brief explanation"
-    }}
+    }
   ]
-}}"""
+}"""
     try:
         response = llm.invoke([HumanMessage(content=prompt)])
         content = response.content.strip()
@@ -245,6 +247,19 @@ async def health():
         "timestamp": datetime.now().isoformat(),
         "groq_available": bool(GROQ_API_KEY)
     }
+
+# -----------------------
+# Companion Endpoints
+# -----------------------
+from utils.companion_brain import companion_brain
+
+@app.post("/api/companion/state")
+async def get_companion_state(request: dict):
+    """Get companion state based on context"""
+    try:
+        return companion_brain.get_state(request)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/session")
 async def create_session():
@@ -347,8 +362,36 @@ async def submit_quiz(submission: QuizSubmission, db: Session = Depends(get_db))
         results = []
         
         for q in questions:
-            user_ans = submission.answers.get(str(q["id"]), "") if isinstance(submission.answers, dict) else ""
-            is_correct = user_ans == q.get("correct_answer", "")
+            # Fix: Pydantic converts keys to int, so we must lookup with int
+            # We try both int and str to be safe
+            q_id = str(q["id"])
+            user_ans = submission.answers.get(q_id, "")
+            # Clean and normalize answers for comparison
+            # We want to extract the leading "A", "B", "C", "D" from both strings if possible.
+            import re
+            
+            def extract_option_char(text):
+                if not text: return ""
+                # Match start of string, optional parens/dots, capture the first letter/digit
+                match = re.match(r"^[\s\(]*([A-Da-d0-9])[\s\)\.]", text.strip())
+                if match:
+                    return match.group(1).upper()
+                # If no pattern like "A) ...", just take the whole thing if it's short, or first char
+                clean = text.strip().upper()
+                return clean if len(clean) == 1 else clean[:1]
+
+            print(f"DEBUG: Processing QID: {q_id}")
+            print(f"  User Ans Raw: '{user_ans}'")
+            print(f"  Correct Ans Raw: '{q.get('correct_answer', '')}'")
+
+            correct_char = extract_option_char(q.get("correct_answer", ""))
+            user_char = extract_option_char(user_ans)
+            
+            print(f"  User Char: '{user_char}' | Correct Char: '{correct_char}'")
+
+            is_correct = (correct_char == user_char) and (correct_char != "")
+            print(f"  Is Correct: {is_correct}")
+
             if is_correct:
                 correct += 1
             
@@ -369,7 +412,8 @@ async def submit_quiz(submission: QuizSubmission, db: Session = Depends(get_db))
             session_id=submission.session_id,
             score=score,
             correct_count=correct,
-            total_questions=total
+            total_questions=total,
+            details=results
         )
         db.add(new_score)
         
